@@ -57,6 +57,7 @@ class Award:
     url: str
     is_combinatie: bool
     notice_type: str
+    publicatiedatum: str | None = None  # publicatie in TED; nodig om niet vooruit te kijken
 
     def as_row(self) -> dict:
         return asdict(self)
@@ -328,6 +329,7 @@ def _parse_eforms(root, pn, notice_type, pub_date) -> list[Award]:
                 url=NOTICE_URL.format(pn),
                 is_combinatie=_is_combination(names),
                 notice_type=notice_type,
+                publicatiedatum=pub_date[:10] or None,
             ))
     return awards
 
@@ -378,5 +380,6 @@ def _parse_legacy(root, pn, notice_type, pub_date) -> list[Award]:
             url=NOTICE_URL.format(pn),
             is_combinatie=_is_combination(names),
             notice_type=notice_type,
+            publicatiedatum=pub_date[:10] or None,
         ))
     return awards
