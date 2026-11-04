@@ -25,10 +25,15 @@ create index if not exists awards_datum_idx on altdata.awards (datum_gunning);
 -- Enkel de service-sleutel (GitHub Actions) mag schrijven en lezen; RLS zonder policies blokkeert anon/authenticated.
 alter table altdata.awards enable row level security;
 
+-- Rechten meteen na de tabel, zodat ze er altijd zijn, ook als de view hieronder zou falen.
+grant usage on schema altdata to service_role;
+grant select, insert, update, delete on altdata.awards to service_role;
+
 -- Per halfjaar het gegunde bedrag. Wijzigingen (can-modif) herhalen meestal het oorspronkelijke bedrag
 -- en worden daarom apart geteld en niet opgeteld in de bedragen.
-create or replace view altdata.awards_per_halfjaar
-with (security_invoker = on) as
+-- Geen security_invoker (bestaat pas vanaf Postgres 15): de view is enkel voor service_role leesbaar.
+drop view if exists altdata.awards_per_halfjaar;
+create view altdata.awards_per_halfjaar as
 select
     make_date(extract(year from datum_gunning)::int,
               case when extract(month from datum_gunning) <= 6 then 1 else 7 end, 1)        as halfjaar_start,
@@ -47,6 +52,4 @@ where datum_gunning is not null
 group by 1, 2
 order by 1;
 
-grant usage on schema altdata to service_role;
-grant select, insert, update, delete on altdata.awards to service_role;
 grant select on altdata.awards_per_halfjaar to service_role;

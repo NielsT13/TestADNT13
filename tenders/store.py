@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import logging
 import os
 from urllib.parse import urlparse
 
 import requests
 
 SCHEMA = "altdata"
+log = logging.getLogger(__name__)
+
+
+def key_role(key: str) -> str:
+    """Welk soort sleutel is dit? Geeft 'service_role', 'secret', 'anon', 'publishable' of 'onbekend'.
+
+    Leest enkel de publieke 'role'-claim van een JWT; de sleutel zelf wordt nooit gelogd.
+    """
+    if key.startswith("sb_secret_"):
+        return "secret"
+    if key.startswith("sb_publishable_"):
+        return "publishable"
+    if key.startswith("eyJ") and key.count(".") == 2:
+        payload = key.split(".")[1]
+        try:
+            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+            return str(claims.get("role", "onbekend"))
+        except (ValueError, json.JSONDecodeError):
+            return "onbekend"
+    return "onbekend"
 
 
 def normalize_base_url(raw: str) -> str:
@@ -26,6 +49,13 @@ class Supabase:
     def __init__(self, url: str | None = None, key: str | None = None):
         self.url = normalize_base_url(url or os.environ["SUPABASE_URL"])
         key = (key or os.environ["SUPABASE_SERVICE_KEY"]).strip()
+        role = key_role(key)
+        log.info("Supabase %s, sleuteltype: %s", urlparse(self.url).netloc, role)
+        if role in ("anon", "publishable", "authenticated"):
+            raise ValueError(
+                f"SUPABASE_SERVICE_KEY is een {role}-sleutel. Gebruik de service_role-sleutel "
+                "(Project Settings → API Keys → Legacy API keys) of een secret key (sb_secret_…)."
+            )
         self.headers = {"apikey": key, "Content-Type": "application/json"}
         # Oude service_role-sleutels zijn JWT's (beginnen met "eyJ") en moeten ook als Bearer mee.
         if key.startswith("eyJ"):
@@ -52,6 +82,7 @@ class Supabase:
 HINTS = {
     "PGRST106": "\nTip: voeg 'altdata' toe bij Project Settings → Data API → Exposed schemas.",
     "PGRST205": "\nTip: voer supabase/migrations/001_altdata_awards.sql uit in de SQL Editor.",
-    "42501": "\nTip: gebruik de service_role- of secret-sleutel, niet de anon/publishable sleutel.",
+    "42501": "\nTip: voer supabase/migrations/001_altdata_awards.sql (opnieuw) volledig uit in de SQL Editor;"
+             " de grant-regels geven service_role toegang tot het schema.",
     "PGRST125": "\nTip: SUPABASE_URL moet de project-URL zijn, bv. https://abcdefgh.supabase.co",
 }

@@ -67,6 +67,24 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             n("https://abc.supabase.co/project/settings")
 
+    def test_key_role(self):
+        import base64, json
+        from tenders.store import Supabase, key_role
+
+        def jwt(role):
+            enc = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+            return f"{enc({'alg': 'HS256'})}.{enc({'role': role})}.sig"
+
+        self.assertEqual(key_role(jwt("service_role")), "service_role")
+        self.assertEqual(key_role(jwt("anon")), "anon")
+        self.assertEqual(key_role("sb_secret_abc"), "secret")
+        self.assertEqual(key_role("sb_publishable_abc"), "publishable")
+        with self.assertRaises(ValueError):
+            Supabase("https://abc.supabase.co", jwt("anon"))
+        with self.assertRaises(ValueError):
+            Supabase("https://abc.supabase.co", "sb_publishable_abc")
+        Supabase("https://abc.supabase.co", jwt("service_role"))
+
     def test_package_id(self):
         self.assertEqual(Candidate("58196-2018", "2018-02-08", "can-standard", "27/2018").package_id, "201800027")
 
