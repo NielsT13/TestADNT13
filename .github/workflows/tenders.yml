@@ -1,0 +1,44 @@
+name: TED-gunningen Moury Construct
+
+on:
+  schedule:
+    - cron: "17 5 * * *" # dagelijks 05:17 UTC (06:17 / 07:17 Belgische tijd)
+  workflow_dispatch:
+    inputs:
+      van:
+        description: "Backfill: publicatiedatum vanaf (YYYY-MM-DD). Leeg = laatste 7 dagen."
+        required: false
+      tot:
+        description: "Backfill: publicatiedatum tot en met (YYYY-MM-DD). Leeg = vandaag."
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tenders
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Ophalen en opslaan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VAN: ${{ inputs.van }}
+          TOT: ${{ inputs.tot }}
+        run: |
+          args=()
+          [ -n "$VAN" ] && args+=(--van "$VAN")
+          [ -n "$TOT" ] && args+=(--tot "$TOT")
+          python -m tenders.run "${args[@]}"
