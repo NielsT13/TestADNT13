@@ -24,6 +24,7 @@ class EformsTest(unittest.TestCase):
         self.assertFalse(a.is_combinatie)  # combinatie van twee groepsbedrijven = 100 % groep
         self.assertEqual(a.looptijd_maanden, 10.1)  # 220 werkdagen
         self.assertEqual(a.bron_id, "741513-2023/TEN-0006")
+        self.assertEqual(a.publicatiedatum, "2024-01-01")  # doorgegeven publicatiedatum
 
     def test_multi_lot_only_group_lot_counted(self):
         # 5 percelen met verschillende winnaars; totaal 6,8 mln, Moury enkel perceel 1

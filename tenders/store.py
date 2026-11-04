@@ -61,6 +61,24 @@ class Supabase:
         if key.startswith("eyJ"):
             self.headers["Authorization"] = f"Bearer {key}"
 
+    def select(self, table: str, params: dict) -> list[dict]:
+        """Leest een tabel of view uit schema altdata (alle rijen, per 1000)."""
+        out: list[dict] = []
+        while True:
+            r = requests.get(
+                f"{self.url}/rest/v1/{table}",
+                params=params,
+                headers={**self.headers, "Accept-Profile": SCHEMA, "Range": f"{len(out)}-{len(out) + 999}"},
+                timeout=60,
+            )
+            if r.status_code >= 300:
+                hint = next((h for code, h in HINTS.items() if code in r.text), "")
+                raise RuntimeError(f"Supabase select {table} {r.status_code}: {r.text[:500]}{hint}")
+            page = r.json()
+            out += page
+            if len(page) < 1000:
+                return out
+
     def upsert_awards(self, rows: list[dict], batch: int = 500) -> None:
         for i in range(0, len(rows), batch):
             r = requests.post(
@@ -84,5 +102,6 @@ HINTS = {
     "PGRST205": "\nTip: voer supabase/migrations/001_altdata_awards.sql uit in de SQL Editor.",
     "42501": "\nTip: voer supabase/migrations/001_altdata_awards.sql (opnieuw) volledig uit in de SQL Editor;"
              " de grant-regels geven service_role toegang tot het schema.",
+    "PGRST204": "\nTip: voer de ontbrekende migratie uit (bv. supabase/migrations/003_awards_publicatiedatum.sql).",
     "PGRST125": "\nTip: SUPABASE_URL moet de project-URL zijn, bv. https://abcdefgh.supabase.co",
 }
