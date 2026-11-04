@@ -71,6 +71,44 @@ Wijzigingen tellen niet mee in de bedragen: ze herhalen meestal het oorspronkeli
 - **Groepsleden herkennen:** dat gebeurt op naam (Moury, Bemat, Mosabois, D-FI, Volt-Air) en waar mogelijk op ondernemingsnummer. "Moury CPC" (Frankrijk) en "Moury Promotion" worden uitgesloten.
 - **Gunningsdatum vs. publicatie:** de gunningsdatum kan maanden vóór de publicatie liggen, en een halfjaar kan nog aangevuld worden nadat het afgelopen is.
 
+## Gerapporteerde omzet en orderboek (vergelijking)
+
+De migratie `supabase/migrations/002_moury_rapportering.sql` maakt de tabel `altdata.moury_rapportering`. Ze bevat de cijfers die Moury Construct zelf publiceert, sinds 2017, met per rij de link naar de PDF:
+- **omzet** ("chiffre d'affaires", excl. andere bedrijfsopbrengsten):
+  - groep: per halfjaar en per jaar, uit de persberichten
+  - per dochter: per jaar, uit het jaarverslag
+- **orderboek:**
+  - groep: elke stand uit de persberichten (afgerond) en de exacte stand uit de jaarverslagen
+  - per dochter: uit de toelichting van het jaarverslag
+
+**Installatie:** voer `002_moury_rapportering.sql` uit in de SQL Editor, ná `001`. Het script mag opnieuw uitgevoerd worden; bestaande rijen worden niet dubbel ingevoegd.
+
+**Views**
+- `altdata.moury_rapportering_actueel`: de laatst gepubliceerde waarde per periode. Moury herwerkt soms cijfers: H1 2019 werd eerst als € 64,6 mln gerapporteerd en een jaar later als € 63,7 mln. Elke publicatie blijft in de tabel staan; de view neemt de jongste.
+- `altdata.moury_halfjaar`: per halfjaar, voor de groep:
+  - `omzet_halfjaar`. Voor H2 is dat de jaaromzet min H1.
+  - `orderboek_begin` en `orderboek_einde`, met de datum van de stand
+  - `nieuwe_orders_impliciet` = orderboek einde − orderboek begin + omzet van het halfjaar
+  - de TED-gunningen van hetzelfde halfjaar (`ted_aantal`, `ted_totaal`, `ted_enkel_groep`, `ted_met_partners`)
+  - `ted_dekking` = TED-totaal / impliciete nieuwe orders
+  - `book_to_bill` = impliciete nieuwe orders / omzet
+
+**Let op de orderboekdatum.** Moury rapporteert het orderboek vaak 1 à 2 maanden ná balansdatum (bv. 28 februari of 31 augustus). De view neemt de stand op de laatste dag van het halfjaar, of anders de eerste stand binnen 92 dagen erna. `orderboek_exact` is enkel `true` als beide standen op balansdatum vallen. Anders is `nieuwe_orders_impliciet` een benadering, die schommelt als het venster korter of langer is dan 6 maanden.
+
+**Nieuwe cijfers toevoegen (twee keer per jaar)**
+1. Open in Supabase de **Table Editor**, kies bovenaan schema `altdata` en tabel `moury_rapportering`. Klik **Insert → Insert row**.
+2. Na het halfjaarbericht (september) voeg je deze rijen toe:
+   - omzet H1 (`kengetal` = `omzet`, `periode_start` = 1 januari, `datum` = 30 juni)
+   - het orderboek (`kengetal` = `orderboek`, `periode_start` leeg, `datum` = de datum uit het bericht)
+3. Na het jaarbericht (maart) voeg je deze rijen toe:
+   - de jaaromzet (`periode_start` = 1 januari, `datum` = 31 december)
+   - het orderboek
+4. Na het jaarverslag (april) voeg je deze rijen toe:
+   - het exacte orderboek op 31/12, per dochter en voor de groep
+5. Vul bij elke rij `gepubliceerd_op` in. `waarde_eur` is in euro, dus 371,5 miljoen = `371500000`.
+
+Wie de startgegevens in de repository wil aanpassen: wijzig `data/moury_rapportering.csv` en voer `python scripts/rapportering_sql.py` uit om de migratie opnieuw te genereren. Een test controleert dat CSV en migratie gelijk lopen en dat de dochters optellen tot het groepstotaal.
+
 ## Lokaal of in Codespaces
 
 ```bash
