@@ -109,6 +109,32 @@ De migratie `supabase/migrations/002_moury_rapportering.sql` maakt de tabel `alt
 
 Wie de startgegevens in de repository wil aanpassen: wijzig `data/moury_rapportering.csv` en voer `python scripts/rapportering_sql.py` uit om de migratie opnieuw te genereren. Een test controleert dat CSV en migratie gelijk lopen en dat de dochters optellen tot het groepstotaal.
 
+## Toets: voorspelt TED de omzet?
+
+`analyse/toets_omzet.py` gaat na of de TED-gunningen de omzetgroei van de volgende 12 maanden beter voorspellen dan eenvoudige alternatieven.
+
+**Hoe de toets werkt**
+- Elke voorspelling gebruikt enkel wat op dat moment gepubliceerd was:
+  - TED-gunningen op hun **publicatiedatum**, niet op de gunningsdatum. De mediaan vertraging is een maand, maar sommige gunningen verschijnen jaren later.
+  - omzet en orderboek zoals toen bekend; herwerkte cijfers tellen pas vanaf hun publicatie
+- De modellen worden telkens opnieuw geschat op de voorbije voorspellingen waarvan de uitkomst al bekend was (expanding window). Daarna voorspellen ze de volgende.
+- Er zijn twee voorspelmomenten:
+  - **publicatie:** de dag van het halfjaar- of jaarbericht. Dan publiceert Moury ook een vers orderboek.
+  - **halfjaareinde:** 30/06 of 31/12, maanden vóór het bericht. Het laatst bekende orderboek is dan een halfjaar oud, en daar zou TED een voorsprong kunnen hebben.
+- Vijf modellen:
+  - `geen_groei`: de omzet blijft gelijk
+  - `trend`: gemiddelde groei tot dan
+  - `orderboek`: groei voorspeld uit orderboek / omzet
+  - `ted`: groei voorspeld uit TED-bedrag van de laatste 12 maanden / omzet
+  - `orderboek_ted`: beide samen
+
+**Uitvoeren (eenmalig voorbereiden)**
+1. Voer `supabase/migrations/003_awards_publicatiedatum.sql` uit in de SQL Editor.
+2. Draai de backfill opnieuw: **Actions → "TED-gunningen Moury Construct" → Run workflow** met `van` = `2017-01-01`. Zo krijgt elke gunning haar publicatiedatum, en heeft de eerste voorspelling ook 12 maanden TED-geschiedenis.
+3. Start de toets: **Actions → "Toets TED vs omzet" → Run workflow**. Het resultaat staat op de samenvattingspagina van de run.
+
+**Lezen met voorzichtigheid.** Er zijn maar 5 à 7 voorspellingen per voorspelmoment, met overlappende periodes. Eén halfjaar meer of minder kan de rangorde van de modellen omgooien. Herhaal de toets na elk nieuw halfjaarbericht.
+
 ## Lokaal of in Codespaces
 
 ```bash

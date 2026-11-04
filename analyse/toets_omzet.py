@@ -137,23 +137,39 @@ class Point:
     voorspelling: dict = field(default_factory=dict)
 
 
-def build_points(rap: Rapportering, awards: list[Award]) -> list[Point]:
+MOMENTS = {
+    "publicatie": "op de dag van het halfjaar- of jaarbericht over halfjaar t",
+    "halfjaareinde": "op de laatste dag van halfjaar t, vóór het bericht (orderboek en omzet zijn dan een halfjaar oud)",
+}
+EERSTE_HALFJAAR = (2018, 1)  # oudere cijfers kennen we enkel uit vergelijkende kolommen, met verkeerde publicatiedatum
+
+
+def build_points(rap: Rapportering, awards: list[Award], moment: str = "publicatie") -> list[Point]:
     halves = sorted({(o.periode_start.year, 1 if o.datum.month == 6 else 2) for o in rap.omzet})
     points = []
     for h in halves:
-        r = rap.release(h)
-        r2 = rap.release(shift(h, 2))
-        if not r or not r2:
+        if h < EERSTE_HALFJAAR:
             continue
-        now = [rap.half(shift(h, -1), r), rap.half(h, r)]
+        if moment == "publicatie":
+            d = rap.release(h)
+        else:
+            d = date(h[0], 6, 30) if h[1] == 1 else date(h[0], 12, 31)
+        known = rap.release(shift(h, 2))
+        if not d or not known:
+            continue
+        # laatste halfjaar waarvan de omzet op moment d gepubliceerd was
+        k = h if moment == "publicatie" else shift(h, -1)
+        if (rap.release(k) or date.max) > d:
+            continue
+        now = [rap.half(shift(k, -1), d), rap.half(k, d)]
         truth_prev = [rap.half(shift(h, -1)), rap.half(h)]
         truth_next = [rap.half(shift(h, 1)), rap.half(shift(h, 2))]
-        ob = rap.orderboek_asof(r)
+        ob = rap.orderboek_asof(d)
         if None in now + truth_prev + truth_next or ob is None:
             continue
         omzet12 = sum(now)
-        ted = sum(a.bedrag for a in awards if not a.wijziging and r - timedelta(days=365) < a.publicatiedatum <= r)
-        points.append(Point(h, r, r2, ob / omzet12, ted / omzet12, sum(truth_next) / sum(truth_prev) - 1))
+        ted = sum(a.bedrag for a in awards if not a.wijziging and d - timedelta(days=365) < a.publicatiedatum <= d)
+        points.append(Point(h, d, known, ob / omzet12, ted / omzet12, sum(truth_next) / sum(truth_prev) - 1))
     return points
 
 
@@ -231,21 +247,21 @@ def pct(v: float | None) -> str:
     return "–" if v is None else f"{v * 100:+.1f}%"
 
 
-def report(points: list[Point], res: dict) -> str:
-    lines = ["## Toets: voorspelt TED de omzetgroei van Moury Construct?", ""]
-    lines.append(f"Voorspellingen die alle modellen konden maken: **{res['n']}**. "
-                 "Doel: omzetgroei over de volgende 12 maanden, voorspeld op de dag van het halfjaar- of jaarbericht.")
+def report(points: list[Point], res: dict, moment: str) -> str:
+    lines = [f"### Voorspelmoment: {moment}", ""]
+    lines.append(f"Voorspeld {MOMENTS[moment]}. Doel: omzetgroei van de 12 maanden na halfjaar t t.o.v. "
+                 f"de 12 maanden t/m t. Voorspellingen die alle modellen konden maken: **{res['n']}**.")
     lines += ["", "| Model | Gem. absolute fout | RMSE | Beter dan trend |", "|---|---|---|---|"]
     for m, r in res["modellen"].items():
         btd = "–" if m == "trend" else f"{r['beter_dan_trend']} van {res['n']}"
         lines.append(f"| {m} | {r['mae'] * 100:.1f} %-punt | {r['rmse'] * 100:.1f} %-punt | {btd} |")
-    lines += ["", "### Per voorspelling", "",
+    lines += ["", "<details><summary>Per voorspelling</summary>", "",
               "| Halfjaar | Voorspeld op | Orderboek/omzet | TED/omzet | Werkelijk | " + " | ".join(MODELS) + " |",
               "|---|---|---|---|---|" + "---|" * len(MODELS)]
     for p in points:
         lines.append(f"| {p.half[0]}-H{p.half[1]} | {p.datum} | {p.x_orderboek:.2f} | {p.x_ted:.2f} | {pct(p.groei)} | "
                      + " | ".join(pct(p.voorspelling.get(m)) for m in MODELS) + " |")
-    lines += ["", "_Kleine steekproef met overlappende periodes: lees dit als een indicatie, niet als bewijs._", ""]
+    lines += ["", "</details>", ""]
     return "\n".join(lines)
 
 
@@ -267,9 +283,13 @@ def main(argv=None) -> int:
             "select": "entiteit,kengetal,periode_start,datum,waarde_eur,gepubliceerd_op", "entiteit": "eq.groep"})
         award_rows = sb.select("awards", {"select": "publicatiedatum,bedrag_excl_btw,notice_type"})
 
-    points = predict(build_points(Rapportering(load_rapportering(rap_rows)), load_awards(award_rows)))
-    res = evaluate(points)
-    text = report(points, res)
+    rap, awards = Rapportering(load_rapportering(rap_rows)), load_awards(award_rows)
+    parts = ["## Toets: voorspelt TED de omzetgroei van Moury Construct?", ""]
+    for moment in MOMENTS:
+        points = predict(build_points(rap, awards, moment))
+        parts.append(report(points, evaluate(points), moment))
+    parts.append("_Kleine steekproef met overlappende periodes: lees dit als een indicatie, niet als bewijs._\n")
+    text = "\n".join(parts)
     print(text)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
