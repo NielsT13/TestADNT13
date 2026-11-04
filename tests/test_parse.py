@@ -59,6 +59,14 @@ class ConfigTest(unittest.TestCase):
                       ["A.M. Galère CFE Cit Blaton Moury Maquet"], ["SM BERNARD / MOURY"]):
             self.assertTrue(h(names), names)
 
+    def test_supabase_url(self):
+        from tenders.store import normalize_base_url as n
+        for raw in ("https://abc.supabase.co", "https://abc.supabase.co/", "https://abc.supabase.co/rest/v1",
+                    " https://abc.supabase.co/rest/v1/ \n"):
+            self.assertEqual(n(raw), "https://abc.supabase.co", raw)
+        with self.assertRaises(ValueError):
+            n("https://abc.supabase.co/project/settings")
+
     def test_package_id(self):
         self.assertEqual(Candidate("58196-2018", "2018-02-08", "can-standard", "27/2018").package_id, "201800027")
 
